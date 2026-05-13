@@ -41,11 +41,18 @@ export function AuthProvider({
 
   const [error, setError] = useState<string | null>(null);
 
+  // AUTH STATE LISTENER
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
       auth,
       (firebaseUser) => {
+        console.log(
+          "Auth State:",
+          firebaseUser?.email || "No User"
+        );
+
         setUser(firebaseUser);
+
         setLoading(false);
       }
     );
@@ -53,9 +60,11 @@ export function AuthProvider({
     return () => unsubscribe();
   }, []);
 
+  // LOGIN
   const login = async () => {
     try {
       setError(null);
+
       setSigningIn(true);
 
       const provider = new GoogleAuthProvider();
@@ -67,21 +76,48 @@ export function AuthProvider({
       await signInWithPopup(auth, provider);
 
     } catch (err: any) {
-      console.error("Google Sign-In Error:", err);
+      console.error(
+        "Google Sign-In Error:",
+        err
+      );
 
-      if (err.code === "auth/unauthorized-domain") {
+      // Unauthorized Domain
+      if (
+        err.code === "auth/unauthorized-domain"
+      ) {
         setError(
           "Unauthorized domain. Add your deployed domain in Firebase Authorized Domains."
         );
 
-      } else if (err.code === "auth/popup-blocked") {
+      // Popup Blocked
+      } else if (
+        err.code === "auth/popup-blocked"
+      ) {
         setError(
           "Popup blocked. Please allow popups."
         );
 
+      // Popup Closed
+      } else if (
+        err.code === "auth/popup-closed-by-user"
+      ) {
+        setError(
+          "Popup closed before sign in completed."
+        );
+
+      // Internal Firebase Error
+      } else if (
+        err.code === "auth/internal-error"
+      ) {
+        setError(
+          "Firebase internal error. Check Firebase configuration."
+        );
+
+      // Generic Error
       } else {
         setError(
-          err.message || "Unable to sign in."
+          err.message ||
+            "Unable to sign in."
         );
       }
 
@@ -90,13 +126,18 @@ export function AuthProvider({
     }
   };
 
+  // LOGOUT
   const logout = async () => {
     try {
       await signOut(auth);
+
       setUser(null);
 
     } catch (err) {
-      console.error("Logout Error:", err);
+      console.error(
+        "Logout Error:",
+        err
+      );
     }
   };
 
@@ -113,9 +154,15 @@ export function AuthProvider({
     >
       {loading ? (
         <div className="min-h-screen flex items-center justify-center bg-black">
-          <h1 className="text-white text-2xl font-bold">
-            IndustrialStore
-          </h1>
+          <div className="flex flex-col items-center gap-4">
+
+            <div className="w-12 h-12 border-4 border-white/20 border-t-yellow-400 rounded-full animate-spin"></div>
+
+            <h1 className="text-white text-2xl font-bold">
+              IndustrialStore
+            </h1>
+
+          </div>
         </div>
       ) : (
         children
@@ -124,6 +171,7 @@ export function AuthProvider({
   );
 }
 
+// CUSTOM HOOK
 export function useAuth() {
   const context = useContext(AuthContext);
 
