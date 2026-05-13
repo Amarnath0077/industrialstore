@@ -1,0 +1,6 @@
+{
+  "name": "IndustrialStore",
+  "description": "A high-performance industrial electrical supply e-commerce platform featuring advanced search, contractor pricing tiers, and a comprehensive product catalog.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}

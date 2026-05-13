@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // User Profile Rules
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.email is string && data.email.size() > 0 && 
+               (!('displayName' in data) || data.displayName is string) &&
+               (!('defaultZip' in data) || data.defaultZip is string);
+      }
+      
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().keys().hasAll(['email']) && incoming().keys().size() <= 4;
+      allow update: if isOwner(userId) && isValidUser(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'defaultZip'])
+      );
+
+      // Addresses Subcollection
+      match /addresses/{addressId} {
+        function isValidAddress(data) {
+          return data.fullName is string && data.fullName.size() > 0 &&
+                 data.street is string && data.street.size() > 0 &&
+                 data.city is string && data.city.size() > 0 &&
+                 data.state is string && data.state.size() > 0 &&
+                 data.zip is string && data.zip.size() > 0 &&
+                 data.phone is string &&
+                 data.isDefault is bool;
+        }
+
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidAddress(incoming()) && incoming().keys().size() <= 8;
+        allow update: if isOwner(userId) && isValidAddress(incoming()) && (
+          incoming().diff(existing()).affectedKeys().hasAny(['fullName', 'street', 'city', 'state', 'zip', 'phone', 'isDefault'])
+        );
+        allow delete: if isOwner(userId);
+      }
+
+      // Cart Items Subcollection
+      match /cart/{productId} {
+        function isValidCartItem(data) {
+          return data.userId == request.auth.uid &&
+                 data.id is string &&
+                 data.title is string &&
+                 data.price is number &&
+                 data.quantity is int && data.quantity > 0 &&
+                 data.addedAt is timestamp;
+        }
+
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidCartItem(incoming());
+        allow update: if isOwner(userId) && isValidCartItem(incoming()) && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['quantity', 'addedAt'])
+        );
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // Orders Rules
+    match /orders/{orderId} {
+      function isValidOrder(data) {
+        return data.userId is string && data.userId.size() > 0 &&
+               data.total is number && data.total >=0 &&
+               data.status in ['pending', 'shipped', 'delivered', 'paid', 'pending_payment'] &&
+               data.createdAt is timestamp;
+      }
+
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Allow creation through server (Admin SDK) or if user creates it pendantly
+      // In this app, we'll allow client to create pending orders
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && isValidOrder(incoming());
+      // Only status can be updated (by admin or server usually, but here we just lock it)
+      allow update: if false; 
+    }
+  }
+}

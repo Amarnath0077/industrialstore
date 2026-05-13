@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User specific data and settings",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "defaultZip": { "type": "string" }
+      },
+      "required": ["email"]
+    },
+    "Address": {
+      "title": "User Address",
+      "description": "Saved shipping addresses for a user",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "street": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "zip": { "type": "string" },
+        "phone": { "type": "string" },
+        "isDefault": { "type": "boolean" }
+      },
+      "required": ["fullName", "street", "city", "state", "zip", "phone"]
+    },
+    "CartItem": {
+      "title": "Cart Item",
+      "description": "Product in a user's cart",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "price": { "type": "number" },
+        "img": { "type": "string" },
+        "quantity": { "type": "integer" },
+        "addedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "id", "title", "price", "quantity", "addedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order details",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "subtotal": { "type": "number" },
+        "tax": { "type": "number" },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "shipped", "delivered", "paid"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "paymentIntentId": { "type": "string" }
+      },
+      "required": ["userId", "subtotal", "total", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Top-level user profiles"
+    },
+    "users/{userId}/addresses/{addressId}": {
+      "schema": "Address",
+      "description": "Saved addresses for a user"
+    },
+    "users/{userId}/cart/{productId}": {
+      "schema": "CartItem",
+      "description": "User's persistence cart"
+    },
+    "orders/{orderId}": {
+      "schema": "Order",
+      "description": "Main orders collection"
+    }
+  }
+}
