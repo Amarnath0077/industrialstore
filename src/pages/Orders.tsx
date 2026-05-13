@@ -3,7 +3,7 @@ import { useAuth } from '../lib/AuthContext';
 import { dbService } from '../lib/dbService';
 import { Order } from '../lib/types';
 import { motion } from 'motion/react';
-import { Package, ChevronRight, Clock, MapPin, ExternalLink, Loader2, AlertTriangle, ShoppingBag, Banknote } from 'lucide-react';
+import { Package, ChevronRight, Clock, MapPin, ExternalLink, Loader2, AlertTriangle, ShoppingBag, Banknote, Truck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 export default function Orders() {
@@ -36,6 +36,39 @@ export default function Orders() {
 
     fetchOrders();
   }, [user]);
+
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredOrders = orders.filter(order => {
+    const q = searchQuery.toLowerCase();
+    const matchesId = order.id.toLowerCase().includes(q);
+    const matchesStatus = order.status.toLowerCase().includes(q);
+    const matchesItems = order.items.some(item => item.title.toLowerCase().includes(q));
+    return matchesId || matchesStatus || matchesItems;
+  });
+
+  const getStatusProgress = (status: string) => {
+    switch(status) {
+      case 'pending_payment': return '20%';
+      case 'pending': return '40%';
+      case 'shipped': return '75%';
+      case 'delivered': return '100%';
+      default: return '20%';
+    }
+  };
+
+  const isStepActive = (currentStatus: string, step: string) => {
+    const steps = ['pending_payment', 'pending', 'shipped', 'delivered'];
+    const currentIndex = steps.indexOf(currentStatus);
+    const stepIndex = steps.indexOf(step);
+    
+    // special handling for pending vs pending_payment
+    if (step === 'pending_payment') return true;
+    if (currentStatus === 'pending_payment' && step !== 'pending_payment') return false;
+    
+    return stepIndex <= currentIndex;
+  };
 
   if (!user && !loading) {
     return (
@@ -80,6 +113,8 @@ export default function Orders() {
                 <input 
                     type="text" 
                     placeholder="Search all orders" 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     className="bg-surface-container-high border border-outline-variant rounded-md py-1.5 px-4 text-sm w-64 focus:ring-1 focus:ring-primary outline-none"
                 />
             </div>
@@ -116,7 +151,18 @@ export default function Orders() {
         </div>
       ) : (
         <div className="space-y-6">
-          {orders.map((order, index) => (
+          {filteredOrders.length === 0 && searchQuery && (
+            <div className="text-center py-12 bg-surface-container/30 rounded-xl border border-dashed border-outline-variant">
+              <p className="text-on-surface-variant font-medium">No orders matching "{searchQuery}"</p>
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="text-primary text-xs font-bold mt-2 hover:underline"
+              >
+                Clear search
+              </button>
+            </div>
+          )}
+          {filteredOrders.map((order, index) => (
             <motion.div 
               key={order.id}
               initial={{ opacity: 0, y: 20 }}
@@ -149,9 +195,31 @@ export default function Orders() {
                 <div className="flex flex-col items-end">
                   <p className="text-[10px] uppercase font-black text-on-surface-variant tracking-widest mb-1">Order #{order.id.slice(-8).toUpperCase()}</p>
                   <div className="flex gap-4">
-                    <button className="text-primary font-medium hover:underline">View order details</button>
+                    <button 
+                      onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                      className="text-primary font-bold hover:underline"
+                    >
+                      {expandedOrderId === order.id ? 'Hide details' : 'View order details'}
+                    </button>
                     <span className="text-outline">|</span>
-                    <button className="text-primary font-medium hover:underline">Invoice</button>
+                    <button 
+                      onClick={(e) => {
+                        const btn = e.currentTarget as HTMLButtonElement;
+                        const originalText = btn.innerText;
+                        btn.innerText = 'Generating...';
+                        btn.disabled = true;
+                        setTimeout(() => {
+                          btn.innerText = 'Downloaded';
+                          setTimeout(() => {
+                            btn.innerText = originalText;
+                            btn.disabled = false;
+                          }, 2000);
+                        }, 1500);
+                      }}
+                      className="text-primary font-bold hover:underline disabled:opacity-50 disabled:no-underline"
+                    >
+                      Invoice
+                    </button>
                   </div>
                 </div>
               </div>
@@ -174,7 +242,94 @@ export default function Orders() {
                       Arriving Soon
                     </div>
                   )}
+                  {expandedOrderId !== order.id && (
+                    <button 
+                      onClick={() => setExpandedOrderId(order.id)}
+                      className="ml-auto bg-primary/10 text-primary text-[10px] font-black uppercase px-3 py-1 rounded border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      Track Shipment
+                    </button>
+                  )}
                 </div>
+
+                {expandedOrderId === order.id && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    className="mb-8 border-b border-outline-variant pb-8"
+                  >
+                    <div className="bg-surface-container/50 p-6 rounded-lg border border-outline-variant shadow-inner">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-on-surface-variant mb-6">Logistic Roadmap</h4>
+                      
+                      <div className="relative mb-8">
+                        <div className="absolute left-0 right-0 h-1 bg-outline-variant top-4 -translate-y-1/2 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full ${order.status === 'pending_payment' ? 'bg-warning' : 'bg-primary'} transition-all duration-1000`}
+                            style={{ width: getStatusProgress(order.status) }}
+                          />
+                        </div>
+                        
+                        <div className="relative flex justify-between">
+                          {[
+                            { id: 'pending_payment', label: 'Authorized', icon: Clock },
+                            { id: 'pending', label: 'Processing', icon: AlertTriangle },
+                            { id: 'shipped', label: 'In Transit', icon: Truck },
+                            { id: 'delivered', label: 'Completed', icon: Package }
+                          ].map((step) => {
+                            const active = isStepActive(order.status, step.id);
+                            const Icon = step.icon;
+                            return (
+                              <div key={step.id} className="flex flex-col items-center gap-2 translate-y-[-1px]">
+                                <div className={`w-8 h-8 rounded border-2 flex items-center justify-center transition-all ${
+                                  active 
+                                    ? (order.status === 'pending_payment' && step.id === 'pending_payment' ? 'bg-warning border-warning text-on-warning' : 'bg-primary border-primary text-on-primary') 
+                                    : 'bg-white border-outline-variant text-on-surface-variant'
+                                }`}>
+                                  <Icon className="w-4 h-4" />
+                                </div>
+                                <span className={`text-[9px] font-black uppercase tracking-widest ${active ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
+                                  {step.label}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest mb-1">Destination Site</p>
+                            <p className="text-sm font-bold text-on-surface">{order.shippingAddress.fullName}</p>
+                            <p className="text-xs text-on-surface-variant leading-relaxed">
+                              {order.shippingAddress.street}<br />
+                              {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zip}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest mb-1">Authorization Method</p>
+                            <p className="text-xs font-bold text-on-surface uppercase">{order.paymentMethod.replace(/_/g, ' ')}</p>
+                          </div>
+                        </div>
+
+                        <div className="bg-white border border-outline-variant p-4 rounded space-y-3">
+                           <div className="flex justify-between border-b border-outline-variant pb-2">
+                             <span className="text-[10px] font-black uppercase text-on-surface-variant">Procurement Subtotal</span>
+                             <span className="text-xs font-mono font-bold">${order.subtotal?.toFixed(2) || '0.00'}</span>
+                           </div>
+                           <div className="flex justify-between border-b border-outline-variant pb-2">
+                             <span className="text-[10px] font-black uppercase text-on-surface-variant">Tax / Duties</span>
+                             <span className="text-xs font-mono font-bold">${order.tax?.toFixed(2) || '0.00'}</span>
+                           </div>
+                           <div className="flex justify-between items-center pt-1">
+                             <span className="text-[10px] font-black uppercase text-primary">Final Valuation</span>
+                             <span className="text-lg font-mono font-black text-primary">${order.total.toFixed(2)}</span>
+                           </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
 
                 <div className="grid gap-6">
                   {order.items.map((item) => (

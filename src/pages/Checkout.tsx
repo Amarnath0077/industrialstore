@@ -1,4 +1,4 @@
-import { Lock, Plus, ShieldCheck, HelpCircle, Undo2, Loader2, MapPin, AlertCircle, Save, User as UserIcon, Banknote, X } from 'lucide-react';
+import { Lock, Plus, ShieldCheck, HelpCircle, Undo2, Loader2, MapPin, AlertCircle, Save, User as UserIcon, Banknote } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -20,7 +20,6 @@ export default function Checkout() {
   const [placing, setPlacing] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [fetchingLocation, setFetchingLocation] = useState(false);
-  const [mapsError, setMapsError] = useState<string | null>(null);
   const [shippingOption, setShippingOption] = useState('std');
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [saveAddress, setSaveAddress] = useState(true);
@@ -84,22 +83,21 @@ export default function Checkout() {
 
   const handleUseLocation = () => {
     if (isApiBroken) {
-      setMapsError("api_load_failed");
+      alert("Google Maps API failed to load. Cannot fetch location.");
       return;
     }
     if (!navigator.geolocation) {
-      setMapsError("geolocation_unsupported");
+      alert("Geolocation is not supported by your browser");
       return;
     }
 
     setFetchingLocation(true);
-    setMapsError(null);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
         if (!geocodingLib) {
           setFetchingLocation(false);
-          setMapsError("library_not_loaded");
+          alert("Maps service not ready.");
           return;
         }
 
@@ -108,7 +106,6 @@ export default function Checkout() {
           const response = await geocoder.geocode({ location: { lat: latitude, lng: longitude } });
 
           if (response.results && response.results.length > 0) {
-            setMapsError(null);
             const result = response.results[0];
             const address = result.formatted_address;
             
@@ -136,20 +133,13 @@ export default function Checkout() {
             }));
 
             setLocationData({ address, latitude, longitude });
-          } else {
-            setMapsError("no_results");
           }
         } catch (error: any) {
           console.error("Geocoding failed:", error);
-          const status = error.status || error.code || "";
-          const message = error.message || "";
-
-          if (message.includes('Billing') || status === 'REQUEST_DENIED' || message.includes('REQUEST_DENIED') || message.includes('not allowed to use the geocoder')) {
-            setMapsError("billing_required");
-          } else if (status === 'OVER_QUERY_LIMIT' || message.includes('quota')) {
-            setMapsError("quota_exceeded");
+          if (error?.message?.includes('Billing') || error?.code === 'REQUEST_DENIED') {
+            alert("Google Maps feature needs setup:\n1. Enable Billing in Google Cloud Console.\n2. Enable 'Geocoding API' for your project.");
           } else {
-            setMapsError("geocoding_failed");
+            alert("Unable to find address for this location. Please enter manually.");
           }
         } finally {
           setFetchingLocation(false);
@@ -157,11 +147,7 @@ export default function Checkout() {
       },
       (error) => {
         setFetchingLocation(false);
-        if (error.code === error.PERMISSION_DENIED) {
-          setMapsError("location_denied");
-        } else {
-          setMapsError("location_error");
-        }
+        alert("Unable to fetch location: " + error.message);
       },
       { timeout: 15000, enableHighAccuracy: false }
     );
@@ -382,44 +368,7 @@ export default function Checkout() {
                   <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                   <div className="text-sm">
                     <p className="font-bold mb-1">Maps API Error</p>
-                    <p className="opacity-90">The Google Maps API failed to load. Check your API key or internet connection.</p>
-                  </div>
-                </div>
-              )}
-
-              {mapsError && (
-                <div className={`p-4 rounded-lg flex items-start gap-3 border mb-6 ${
-                  mapsError === 'billing_required' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-error/10 border-error/20 text-error'
-                }`}>
-                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                  <div className="text-sm flex-1">
-                    <div className="flex justify-between items-start">
-                      <p className="font-bold mb-1">
-                        {mapsError === 'billing_required' ? "Maps Setup Required" : 
-                         mapsError === 'location_denied' ? "Location Denied" :
-                         mapsError === 'quota_exceeded' ? "Quota Reached" : "Maps Error"}
-                      </p>
-                      <button onClick={() => setMapsError(null)} className="opacity-50 hover:opacity-100">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <p className="opacity-90 text-xs">
-                      {mapsError === 'billing_required' && "Geocoding requires billing and API enablement in Google Cloud Console."}
-                      {mapsError === 'location_denied' && "Please enable location permissions in your browser to use this feature."}
-                      {mapsError === 'quota_exceeded' && "The daily quota for this API key has been reached."}
-                      {mapsError === 'api_load_failed' && "Maps services failed to load correctly."}
-                      {mapsError === 'geolocation_unsupported' && "Geolocation is not supported by your browser."}
-                      {mapsError === 'library_not_loaded' && "Maps services are still loading. Please wait a moment."}
-                      {mapsError === 'no_results' && "Unable to find an address for your current location."}
-                      {mapsError === 'geocoding_failed' && "Unable to determine address from your location. Please enter manually."}
-                      {mapsError === 'location_error' && "Unable to fetch your current location."}
-                    </p>
-                    {mapsError === 'billing_required' && (
-                      <div className="mt-2 flex gap-4 font-bold uppercase text-[10px] tracking-widest overflow-hidden whitespace-nowrap">
-                        <a href="https://console.cloud.google.com/project/_/billing/enable" target="_blank" rel="noopener" className="hover:underline">1. Enable Billing</a>
-                        <a href="https://console.cloud.google.com/google/maps-apis/library/geocoding-backend.googleapis.com" target="_blank" rel="noopener" className="hover:underline">2. Enable API</a>
-                      </div>
-                    )}
+                    <p className="opacity-90">The Google Maps API failed to load.</p>
                   </div>
                 </div>
               )}

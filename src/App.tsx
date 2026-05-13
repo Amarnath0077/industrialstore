@@ -161,14 +161,9 @@ function AppContent({ onOpenLocation }: { onOpenLocation: () => void }) {
 
 export default function App() {
   const [isLocationOpen, setIsLocationOpen] = React.useState(false);
-  const apiStatus = useApiLoadingStatus();
 
   if (!hasValidKey) {
     return <MapsErrorScreen status="Missing or placeholder API key." />;
-  }
-
-  if (apiStatus === APILoadingStatus.FAILED) {
-    return <MapsErrorScreen status="FAILED" />;
   }
 
   return (

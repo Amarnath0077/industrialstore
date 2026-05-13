@@ -1,27 +1,45 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { initializeFirestore, memoryLocalCache } from "firebase/firestore";
+import firebaseConfig from '../../firebase-applet-config.json';
 
-import {
-  getAuth,
-  GoogleAuthProvider,
-} from "firebase/auth";
+// Safety check for firebase config
+const isValidConfig = firebaseConfig && firebaseConfig.projectId && firebaseConfig.apiKey && !firebaseConfig.projectId.includes('<');
 
-import { getFirestore } from "firebase/firestore";
+if (!isValidConfig) {
+  console.error("Firebase configuration is missing or contains placeholder values. Please run the set_up_firebase tool.");
+}
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCoh1Cd1E4G2rqy83Hxs9DU21wKbYibh84",
-  authDomain: "industrialstore-2699e.firebaseapp.com",
-  projectId: "industrialstore-2699e",
-  storageBucket: "industrialstore-2699e.firebasestorage.app",
-  messagingSenderId: "740051499764",
-  appId: "1:740051499764:web:bfcde421314886a6773ca1",
-};
-
-const app = initializeApp(firebaseConfig);
-
+// Initialize Firebase
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 export const auth = getAuth(app);
 
-export const provider = new GoogleAuthProvider();
+// Set Auth persistence to local storage explicitly to avoid IndexedDB backing store errors
+setPersistence(auth, browserLocalPersistence).catch(err => {
+  console.warn("Firebase Auth: Could not set local persistence, falling back to memory.", err);
+});
 
-export const db = getFirestore(app);
+// Use initializeFirestore with memory cache to avoid "Full Disk" or IndexedDB errors in preview environments
+const dbId = (firebaseConfig as any).firestoreDatabaseId;
+export const db = initializeFirestore(app, {
+  localCache: memoryLocalCache()
+}, dbId);
+
+// Critical constraint: Test connection on boot
+const testConnection = async () => {
+  try {
+    const { doc, getDocFromServer } = await import('firebase/firestore');
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error: any) {
+    if (error?.message?.includes('the client is offline') || error?.message?.includes('database')) {
+      console.error("Firebase connection test failed. Database ID:", dbId, error.message);
+    }
+    // Handle IndexedDB/Storage errors gracefully
+    if (error?.message?.includes('quota') || error?.message?.includes('disk') || error?.code === 'failed-precondition') {
+      console.warn("Firestore: Persistent storage is disabled or full. Falling back to memory-only cache.");
+    }
+  }
+};
+testConnection();
 
 export default app;

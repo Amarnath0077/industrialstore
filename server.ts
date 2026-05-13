@@ -72,6 +72,24 @@ async function startServer() {
     }
   });
 
+  // Get Stripe Session Details
+  app.get("/api/get-checkout-session/:sessionId", async (req, res) => {
+    const s = getStripe();
+    if (!s) {
+      return res.status(500).json({ error: "Stripe is not configured" });
+    }
+
+    try {
+      const session = await s.checkout.sessions.retrieve(req.params.sessionId, {
+        expand: ['line_items', 'line_items.data.price.product'],
+      });
+      res.json(session);
+    } catch (err: any) {
+      console.error("Stripe Retrieve Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   if (!isProd) {
     const vite = await createViteServer({
       server: { middlewareMode: true },

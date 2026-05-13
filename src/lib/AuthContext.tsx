@@ -1,19 +1,7 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
-
-import {
-  User,
-  onAuthStateChanged,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut,
-} from "firebase/auth";
-
-import { auth } from "./firebase";
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { auth } from './firebase';
+import { dbService } from './dbService';
 
 interface AuthContextType {
   user: User | null;
@@ -24,145 +12,95 @@ interface AuthContextType {
   logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(
-  undefined
-);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-
   const [loading, setLoading] = useState(true);
-
   const [signingIn, setSigningIn] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
 
-  // AUTH STATE LISTENER
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      (firebaseUser) => {
-        console.log(
-          "Auth State:",
-          firebaseUser?.email || "No User"
-        );
+    // Fail-safe: Ensure loading state is eventually resolved
+    const timeoutId = setTimeout(() => {
+      setLoading(currentLoading => {
+        if (currentLoading) {
+          console.warn("Auth initialization timed out. Proceeding as guest.");
+          return false;
+        }
+        return currentLoading;
+      });
+    }, 6000); // 6 seconds timeout
 
-        setUser(firebaseUser);
-
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("Auth state changed:", user?.uid || "No user");
+      try {
+        // Set user immediately so UI can update
+        setUser(user);
         setLoading(false);
-      }
-    );
+        setSigningIn(false);
+        clearTimeout(timeoutId);
 
-    return () => unsubscribe();
+        if (user) {
+          // Merge guest cart items to firestore in the background
+          dbService.mergeCart(user.uid).catch(err => {
+            console.error("Cart merge failed during auth change", err);
+          });
+        }
+      } catch (err) {
+        console.error("Auth state change processing error", err);
+        setLoading(false);
+        setSigningIn(false);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      clearTimeout(timeoutId);
+    };
   }, []);
 
-  // LOGIN
   const login = async () => {
+    const provider = new GoogleAuthProvider();
+    setError(null);
+    setSigningIn(true);
     try {
-      setError(null);
-
-      setSigningIn(true);
-
-      const provider = new GoogleAuthProvider();
-
-      provider.setCustomParameters({
-        prompt: "select_account",
-      });
-
       await signInWithPopup(auth, provider);
-
     } catch (err: any) {
-      console.error(
-        "Google Sign-In Error:",
-        err
-      );
-
-      // Unauthorized Domain
-      if (
-        err.code === "auth/unauthorized-domain"
-      ) {
-        setError(
-          "Unauthorized domain. Add your deployed domain in Firebase Authorized Domains."
-        );
-
-      // Popup Blocked
-      } else if (
-        err.code === "auth/popup-blocked"
-      ) {
-        setError(
-          "Popup blocked. Please allow popups."
-        );
-
-      // Popup Closed
-      } else if (
-        err.code === "auth/popup-closed-by-user"
-      ) {
-        setError(
-          "Popup closed before sign in completed."
-        );
-
-      // Internal Firebase Error
-      } else if (
-        err.code === "auth/internal-error"
-      ) {
-        setError(
-          "Firebase internal error. Check Firebase configuration."
-        );
-
-      // Generic Error
-      } else {
-        setError(
-          err.message ||
-            "Unable to sign in."
-        );
-      }
-
-    } finally {
+      console.error("Error signing in with Google", err);
       setSigningIn(false);
+      if (err.code === 'auth/unauthorized-domain') {
+        setError('This domain is not authorized in your Firebase console. Please add this domain to Authorized Domains in Firebase Authentication Settings.');
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('Popup was blocked by your browser. Please allow popups for this site.');
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        // Just ignore cancelled popups
+        setError(null);
+      } else {
+        setError(err.message || 'An error occurred during sign in.');
+      }
     }
   };
 
-  // LOGOUT
   const logout = async () => {
     try {
+      setLoading(true);
       await signOut(auth);
-
-      setUser(null);
-
-    } catch (err) {
-      console.error(
-        "Logout Error:",
-        err
-      );
+    } catch (error) {
+      console.error("Error signing out", error);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        signingIn,
-        error,
-        login,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={{ user, loading, signingIn, error, login, logout }}>
       {loading ? (
-        <div className="min-h-screen flex items-center justify-center bg-black">
-          <div className="flex flex-col items-center gap-4">
-
-            <div className="w-12 h-12 border-4 border-white/20 border-t-yellow-400 rounded-full animate-spin"></div>
-
-            <h1 className="text-white text-2xl font-bold">
-              IndustrialStore
-            </h1>
-
-          </div>
+        <div className="min-h-screen bg-primary flex items-center justify-center">
+           <div className="flex flex-col items-center gap-4">
+             <div className="w-12 h-12 border-4 border-on-primary/20 border-t-secondary-container rounded-full animate-spin"></div>
+             <span className="text-on-primary font-black tracking-tighter text-xl">IndustrialStore</span>
+           </div>
         </div>
       ) : (
         children
@@ -171,15 +109,10 @@ export function AuthProvider({
   );
 }
 
-// CUSTOM HOOK
 export function useAuth() {
   const context = useContext(AuthContext);
-
-  if (!context) {
-    throw new Error(
-      "useAuth must be used within AuthProvider"
-    );
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
   }
-
   return context;
 }
