@@ -14,7 +14,26 @@ export default function Navbar({ onOpenLocation }: NavbarProps) {
   const { user, login, logout, signingIn, error: authError } = useAuth();
   const [cartCount, setCartCount] = useState(0);
   const [showSearch, setShowSearch] = useState(false);
+  const [locationLabel, setLocationLabel] = useState('Select location');
   const searchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Initial load
+    const saved = localStorage.getItem('user_manual_location');
+    if (saved) {
+      const { city, pincode } = JSON.parse(saved);
+      setLocationLabel(city && pincode ? `${city} ${pincode}` : pincode || city || 'Select location');
+    }
+
+    // Listen for updates
+    const handleUpdate = (e: any) => {
+      const { city, pincode } = e.detail;
+      setLocationLabel(city && pincode ? `${city} ${pincode}` : pincode || city || 'Select location');
+    };
+
+    window.addEventListener('manual_location_updated', handleUpdate);
+    return () => window.removeEventListener('manual_location_updated', handleUpdate);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = dbService.getCartItems(user?.uid || null, (items) => {
@@ -50,7 +69,7 @@ export default function Navbar({ onOpenLocation }: NavbarProps) {
               <MapPin className="w-5 h-5 text-on-primary" />
               <div className="flex flex-col items-start">
                 <span className="text-[11px] leading-tight text-on-primary-container">Deliver to</span>
-                <span className="text-xs font-bold leading-tight">Chicago 60601</span>
+                <span className="text-xs font-bold leading-tight">{locationLabel}</span>
               </div>
             </button>
           </div>

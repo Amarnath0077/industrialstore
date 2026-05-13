@@ -2,7 +2,6 @@ import { Lock, Plus, ShieldCheck, HelpCircle, Undo2, Loader2, MapPin, AlertCircl
 import { motion } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { useMapsLibrary, useApiLoadingStatus, APILoadingStatus } from '@vis.gl/react-google-maps';
 import { loadStripe } from '@stripe/stripe-js';
 import { useAuth } from '../lib/AuthContext';
 import { dbService } from '../lib/dbService';
@@ -13,24 +12,14 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 
 export default function Checkout() {
   const navigate = useNavigate();
   const { user, login } = useAuth();
-  const geocodingLib = useMapsLibrary('geocoding');
-  const apiStatus = useApiLoadingStatus();
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
-  const [fetchingLocation, setFetchingLocation] = useState(false);
   const [shippingOption, setShippingOption] = useState('std');
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [saveAddress, setSaveAddress] = useState(true);
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
-  const [locationData, setLocationData] = useState<{
-    address: string;
-    latitude: number;
-    longitude: number;
-  } | null>(null);
-
-  const isApiBroken = apiStatus === APILoadingStatus.FAILED;
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -79,78 +68,6 @@ export default function Checkout() {
       zip: addr.zip,
       phone: addr.phone
     });
-  };
-
-  const handleUseLocation = () => {
-    if (isApiBroken) {
-      alert("Google Maps API failed to load. Cannot fetch location.");
-      return;
-    }
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser");
-      return;
-    }
-
-    setFetchingLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        if (!geocodingLib) {
-          setFetchingLocation(false);
-          alert("Maps service not ready.");
-          return;
-        }
-
-        try {
-          const geocoder = new geocodingLib.Geocoder();
-          const response = await geocoder.geocode({ location: { lat: latitude, lng: longitude } });
-
-          if (response.results && response.results.length > 0) {
-            const result = response.results[0];
-            const address = result.formatted_address;
-            
-            let streetNumber = '';
-            let route = '';
-            let city = '';
-            let state = '';
-            let zip = '';
-
-            result.address_components.forEach(component => {
-              const types = component.types;
-              if (types.includes('street_number')) streetNumber = component.long_name;
-              if (types.includes('route')) route = component.long_name;
-              if (types.includes('locality')) city = component.long_name;
-              if (types.includes('administrative_area_level_1')) state = component.short_name;
-              if (types.includes('postal_code')) zip = component.long_name;
-            });
-
-            setFormData(prev => ({
-              ...prev,
-              street: `${streetNumber} ${route}`.trim() || address,
-              city: city || prev.city,
-              state: state || prev.state,
-              zip: zip || prev.zip
-            }));
-
-            setLocationData({ address, latitude, longitude });
-          }
-        } catch (error: any) {
-          console.error("Geocoding failed:", error);
-          if (error?.message?.includes('Billing') || error?.code === 'REQUEST_DENIED') {
-            alert("Google Maps feature needs setup:\n1. Enable Billing in Google Cloud Console.\n2. Enable 'Geocoding API' for your project.");
-          } else {
-            alert("Unable to find address for this location. Please enter manually.");
-          }
-        } finally {
-          setFetchingLocation(false);
-        }
-      },
-      (error) => {
-        setFetchingLocation(false);
-        alert("Unable to fetch location: " + error.message);
-      },
-      { timeout: 15000, enableHighAccuracy: false }
-    );
   };
 
   const deliveryOptions = [
@@ -263,10 +180,6 @@ export default function Checkout() {
         status: paymentMethod === 'cod' ? 'pending_payment' : 'pending'
       };
 
-      if (locationData) {
-        orderPayload.location = locationData;
-      }
-
       const orderId = await dbService.placeOrder(user.uid, orderPayload);
       
       clearTimeout(processTimeout);
@@ -363,26 +276,8 @@ export default function Checkout() {
               animate={{ opacity: 1, y: 0 }}
               className="bg-surface-container-lowest border border-outline-variant p-6 rounded-lg"
             >
-              {isApiBroken && (
-                <div className="bg-error/10 border border-error/20 p-4 rounded-lg flex items-start gap-3 text-error mb-6">
-                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                  <div className="text-sm">
-                    <p className="font-bold mb-1">Maps API Error</p>
-                    <p className="opacity-90">The Google Maps API failed to load.</p>
-                  </div>
-                </div>
-              )}
-              
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-primary tracking-tight">1. Shipping Address</h2>
-                <button 
-                  onClick={handleUseLocation}
-                  disabled={fetchingLocation}
-                  className="text-primary text-xs font-bold hover:underline flex items-center gap-1 disabled:opacity-50"
-                >
-                  {fetchingLocation ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
-                  Use my current location
-                </button>
               </div>
 
               {savedAddresses.length > 0 && (
@@ -473,7 +368,7 @@ export default function Checkout() {
                     className="w-4 h-4 rounded text-primary focus:ring-primary"
                    />
                    <label htmlFor="save-addr" className="text-xs font-bold text-on-surface-variant cursor-pointer flex items-center gap-1">
-                     <Save className="w-3 h-3" />
+                     <ShieldCheck className="w-3 h-3" />
                      Save this address for legacy use
                    </label>
                 </div>
